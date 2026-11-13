@@ -1,10 +1,3 @@
-"""
-Step 2 - Pull ALL rows, save a dated raw snapshot, and test what we noticed in Step 1.
-
-Run:  python step2_extract.py
-Output: data/raw/<today>/layer_0.json and layer_1.json  +  a short report
-"""
-
 import json
 from datetime import date, datetime, timezone
 from pathlib import Path

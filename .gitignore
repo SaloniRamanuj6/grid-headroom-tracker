@@ -1,0 +1,7 @@
+# Rebuilt from data/raw on every run, so we don't store it
+data/grid.duckdb
+data/grid.duckdb.wal
+
+# Local Python stuff
+.venv/
+__pycache__/

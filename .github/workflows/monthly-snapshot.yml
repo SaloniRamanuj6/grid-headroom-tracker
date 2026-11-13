@@ -1,0 +1,45 @@
+name: Monthly hosting capacity snapshot
+
+on:
+  schedule:
+    - cron: "17 14 2 * *"   # 2nd of every month, 14:17 UTC (7:17 AM Arizona)
+  workflow_dispatch:         # adds a "Run workflow" button so you can run it any time
+
+permissions:
+  contents: write            # lets the robot save new snapshots back into the repo
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install libraries
+        run: pip install -r requirements.txt
+
+      - name: Extract - pull today's data from National Grid
+        run: python step2_extract.py
+
+      # Save the raw photo BEFORE checks, so we keep it even if a check fails
+      - name: Save raw snapshot to the repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/raw
+          git commit -m "Snapshot $(date -u +%Y-%m-%d)" || echo "Nothing new to save"
+          git push
+
+      - name: Load - rebuild clean tables from every saved snapshot
+        run: |
+          for day_folder in data/raw/*/; do
+            python step3_clean.py "$(basename "$day_folder")"
+          done
+
+      - name: Quality checks (a FAIL turns this run red)
+        run: python step4_quality.py
