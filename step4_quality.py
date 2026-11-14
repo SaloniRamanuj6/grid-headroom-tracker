@@ -1,15 +1,3 @@
-"""
-Step 4 - Data quality checks on the newest snapshot.
-
-Run:  python step4_quality.py
-Exit code 1 if any FAIL check breaks -> later, GitHub Actions will show a red X.
-
-Three severity levels:
-  FAIL = our data is broken, stop the pipeline
-  WARN = the data loaded fine but something looks off, tell a human
-  INFO = not a problem, just a fact worth knowing
-"""
-
 import sys
 from datetime import datetime
 
