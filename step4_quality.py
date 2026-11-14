@@ -57,7 +57,7 @@ checks.append(("oversubscribed_feeders", "INFO", True,
 print(f"Data quality report for snapshot {today}\n")
 failed = False
 for name, severity, passed, detail in checks:
-    status = "PASS" if passed else severity
+    status = "INFO" if severity == "INFO" else ("PASS" if passed else severity)
     if not passed and severity == "FAIL":
         failed = True
     print(f"  [{status:<4}] {name:<24} {detail}")
