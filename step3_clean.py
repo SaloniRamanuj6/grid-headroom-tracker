@@ -1,11 +1,3 @@
-"""
-Step 3 - Load a raw snapshot into clean DuckDB tables.
-
-Run:  pip install duckdb
-      python step3_clean.py                 (loads the newest snapshot folder)
-      python step3_clean.py 2026-11-13      (loads a specific day)
-"""
-
 import sys
 from pathlib import Path
 
