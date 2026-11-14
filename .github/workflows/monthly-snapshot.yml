@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Get the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -43,3 +43,12 @@ jobs:
 
       - name: Quality checks (a FAIL turns this run red)
         run: python step4_quality.py
+
+      - name: Dashboard - rebuild the web page
+        run: python step5_dashboard.py
+
+      - name: Publish dashboard
+        run: |
+          git add docs
+          git commit -m "Dashboard for $(date -u +%Y-%m-%d)" || echo "Dashboard unchanged"
+          git push

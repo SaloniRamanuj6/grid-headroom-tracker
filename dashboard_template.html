@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grid Headroom Tracker | Massachusetts hosting capacity</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface-1: #fcfcfb;
+    --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #898781;
+    --grid: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --series-1: #2a78d6; --warning: #fab219; --critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface-1: #1a1a19;
+      --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #898781;
+      --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+      --series-1: #3987e5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .viz-root {
+    background: var(--page); color: var(--text-primary); min-height: 100vh;
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 32px 20px 48px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 4px; }
+  .sub { color: var(--text-secondary); margin: 0 0 20px; }
+  .note { color: var(--text-muted); font-size: 13px; margin: 0 0 14px; }
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  }
+  .banner { display: flex; gap: 12px; align-items: flex-start; border-left: 4px solid var(--warning); }
+  .banner svg { flex: none; margin-top: 2px; }
+  .banner strong { display: block; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .kpi { margin: 0; }
+  .kpi .num { font-size: 34px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .kpi .lbl { color: var(--text-secondary); font-size: 14px; }
+  .kpi .pct { color: var(--text-muted); font-size: 13px; }
+  /* bar chart */
+  .bars { display: grid; gap: 10px; }
+  .bar-row { display: grid; grid-template-columns: 210px 1fr; align-items: center; gap: 12px; }
+  .bar-label { color: var(--text-secondary); font-size: 14px; text-align: right; }
+  .bar-track { position: relative; height: 28px; border-left: 1px solid var(--baseline); }
+  .bar-hit { position: absolute; inset: -4px 0; display: flex; align-items: center; cursor: default; }
+  .bar {
+    height: 24px; background: var(--series-1); border-radius: 0 4px 4px 0;
+    min-width: 2px; transition: opacity .15s;
+  }
+  @media (max-width: 600px) { .bar-row { grid-template-columns: 110px 1fr; } .bar-label { font-size: 12px; } }
+  .bar-val { margin-left: 8px; font-size: 13px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .bars:hover .bar { opacity: .45; }
+  .bars .bar-row:hover .bar { opacity: 1; }
+  #tip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  }
+  /* tables */
+  .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  input[type=search] {
+    font: inherit; padding: 7px 10px; border-radius: 8px; width: 260px; max-width: 100%;
+    border: 1px solid var(--baseline); background: var(--page); color: var(--text-primary);
+  }
+  .count { color: var(--text-muted); font-size: 13px; }
+  .scroll { max-height: 420px; overflow: auto; border-top: 1px solid var(--grid); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th {
+    position: sticky; top: 0; background: var(--surface-1); text-align: right;
+    color: var(--text-secondary); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--baseline);
+  }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--grid); text-align: right; }
+  th:first-child, td:first-child, th.l, td.l { text-align: left; }
+  .flag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-primary); }
+  .flag i { width: 8px; height: 8px; border-radius: 50%; background: var(--critical); display: inline-block; }
+  footer { color: var(--text-muted); font-size: 13px; margin-top: 24px; }
+  footer a, .sub a { color: var(--series-1); }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<div class="wrap">
+
+  <h1>Grid Headroom Tracker</h1>
+  <p class="sub">How much room is left for new solar, wind and storage on National Grid's Massachusetts distribution feeders.
+    Independent project using public data from the
+    <a href="https://systemdataportal.nationalgrid.com/MA/">MA System Data Portal</a>.</p>
+
+  <div class="card banner" role="status">
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M10 2 L19 18 H1 Z" fill="#fab219"/><rect x="9" y="7" width="2" height="6" fill="#0b0b0b"/><rect x="9" y="14.5" width="2" height="2" fill="#0b0b0b"/>
+    </svg>
+    <div>
+      <strong>Warning: source data may be stale</strong>
+      <span id="fresh"></span>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="card">
+    <h2>Feeders by how full they are</h2>
+    <p class="note">% full = (connected + pending MW) ÷ feeder limit, where limit = available + connected MW. Over 100% means more projects are waiting than the feeder has room for.</p>
+    <div class="bars" id="bars"></div>
+  </div>
+
+  <div class="card">
+    <h2>Substations, least room first</h2>
+    <p class="note">MW left counts pending projects as already taking up room.</p>
+    <div class="toolbar">
+      <input type="search" id="subSearch" placeholder="Search substation" aria-label="Search substations">
+      <span class="count" id="subCount"></span>
+    </div>
+    <div class="scroll"><table id="subTable"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>All feeders, fullest first</h2>
+    <div class="toolbar">
+      <input type="search" id="fdrSearch" placeholder="Search feeder ID or substation" aria-label="Search feeders">
+      <span class="count" id="fdrCount"></span>
+    </div>
+    <div class="scroll"><table id="fdrTable"></table></div>
+  </div>
+
+  <footer>
+    Covers generation hosting capacity only (not load capacity for large users like data centers), three-phase feeders, battery storage excluded.
+    Built by <a href="https://linkedin.com/in/saloni-ramanuj-362329235">Saloni Ramanuj</a> ·
+    <a href="https://github.com/SaloniRamanuj6/grid-headroom-tracker">Source code and method</a>
+  </footer>
+</div>
+<div id="tip"></div>
+</div>
+
+<script>
+const DATA = __DATA__;
+const fmt = n => n.toLocaleString("en-US");
+const pct = (a, b) => Math.round(a / b * 100) + "%";
+
+// Freshness banner
+document.getElementById("fresh").textContent =
+  `National Grid's own date stamp is ${DATA.source_date}, ${DATA.source_age_days} days before this snapshot (${DATA.snapshot_date}). ` +
+  `Figures reflect that analysis, not necessarily today's grid.`;
+
+// Headline tiles
+const k = DATA.kpis;
+document.getElementById("kpis").innerHTML = [
+  [fmt(k.feeders), "feeders tracked", `${fmt(k.substations)} substations`],
+  [fmt(k.nearly_full), "feeders 90%+ full", pct(k.nearly_full, k.feeders) + " of feeders"],
+  [fmt(k.oversubscribed), "feeders oversubscribed", pct(k.oversubscribed, k.feeders) + " of feeders"],
+  [fmt(k.zero_subs), "substations with 0 MW left", "after pending projects"],
+].map(([n, l, p]) => `<div class="card kpi"><div class="num">${n}</div><div class="lbl">${l}</div><div class="pct">${p}</div></div>`).join("");
+
+// Bar chart with hover tooltip
+const tip = document.getElementById("tip");
+const max = Math.max(...DATA.buckets.map(b => b.feeders));
+const bars = document.getElementById("bars");
+DATA.buckets.forEach(b => {
+  const row = document.createElement("div");
+  row.className = "bar-row";
+  row.innerHTML = `<div class="bar-label">${b.label}</div>
+    <div class="bar-track"><div class="bar-hit">
+      <div class="bar" style="width:${b.feeders / max * 85}%"></div>
+      <span class="bar-val">${fmt(b.feeders)}</span></div></div>`;
+  const hit = row.querySelector(".bar-hit");
+  hit.addEventListener("mousemove", e => {
+    tip.innerHTML = `<strong>${b.label}</strong><br>${fmt(b.feeders)} feeders · ${pct(b.feeders, k.feeders)} of all`;
+    tip.style.display = "block";
+    tip.style.left = Math.min(e.clientX + 14, innerWidth - 220) + "px";
+    tip.style.top = (e.clientY + 14) + "px";
+  });
+  hit.addEventListener("mouseleave", () => tip.style.display = "none");
+  bars.appendChild(row);
+});
+
+// Searchable tables
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const num = (v, d = 2) => v === null || v === undefined ? "–" : Number(v).toFixed(d);
+
+function table(id, searchId, countId, rows, cols, keys, noun) {
+  const el = document.getElementById(id);
+  const head = "<thead><tr>" + cols.map(c => `<th class="${c.cls || ""}">${c.h}</th>`).join("") + "</tr></thead>";
+  function draw(q) {
+    q = q.trim().toLowerCase();
+    const hits = q ? rows.filter(r => keys.some(key => String(r[key]).toLowerCase().includes(q))) : rows;
+    el.innerHTML = head + "<tbody>" + hits.map(r =>
+      "<tr>" + cols.map(c => `<td class="${c.cls || ""}">${c.f(r)}</td>`).join("") + "</tr>").join("") + "</tbody>";
+    document.getElementById(countId).textContent = `${fmt(hits.length)} of ${fmt(rows.length)} ${noun}`;
+  }
+  document.getElementById(searchId).addEventListener("input", e => draw(e.target.value));
+  draw("");
+}
+
+const over = r => r.oversubscribed > 0 ? `<span class="flag"><i></i>${r.oversubscribed} oversubscribed</span>` : "";
+table("subTable", "subSearch", "subCount", DATA.substations, [
+  { h: "Substation", f: r => esc(r.substation) },
+  { h: "Feeders", f: r => r.feeders },
+  { h: "90%+ full", f: r => r.nearly_full },
+  { h: "MW left", f: r => num(r.mw_left) },
+  { h: "Flag", cls: "l", f: over },
+], ["substation"], "substations");
+
+table("fdrTable", "fdrSearch", "fdrCount", DATA.feeders, [
+  { h: "Feeder", f: r => esc(r.master_cdf) },
+  { h: "Substation", cls: "l", f: r => esc(r.substation) },
+  { h: "kV", f: r => num(r.voltage_kv, 1) },
+  { h: "Limit MW", f: r => num(r.limit_mw) },
+  { h: "Connected", f: r => num(r.connected_mw) },
+  { h: "Pending", f: r => num(r.pending_mw) },
+  { h: "MW left", f: r => num(r.left_mw) },
+  { h: "% full", f: r => r.pct_full === null ? "–" : (r.pct_full > 100
+      ? `<span class="flag"><i></i>${num(r.pct_full, 0)}%</span>` : num(r.pct_full, 0) + "%") },
+], ["master_cdf", "substation"], "feeders");
+</script>
+</body>
+</html>
