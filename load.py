@@ -94,6 +94,78 @@ SELECT DISTINCT                                  -- DISTINCT removes the 551 rep
 FROM read_json_auto('{sub_file}')
 """)
 
+
+# ======================================================================
+# NEW YORK (only if this snapshot folder has an "ny" subfolder)
+# ======================================================================
+ny_dir = RAW_DIR / day / "ny"
+
+con.execute("""
+CREATE TABLE IF NOT EXISTS ny_feeder_hosting_snapshot (
+    snapshot_date              DATE,
+    master_cdf                 VARCHAR,
+    substation_bank            VARCHAR,
+    nyiso_load_zone            VARCHAR,
+    voltage_kv                 DOUBLE,
+    max_hc_mw                  DOUBLE,   -- room for new solar at the BEST spot on the feeder
+    min_hc_mw                  DOUBLE,   -- room at the WORST spot on the feeder
+    installed_dg_mw            DOUBLE,   -- already connected
+    queued_dg_mw               DOUBLE,   -- waiting in line
+    connected_since_refresh_mw DOUBLE,   -- connected after the last analysis
+    backfeed_protection        BOOLEAN,
+    notes                      VARCHAR,
+    hca_refresh_date           DATE,     -- when the capacity analysis was run
+    dg_refresh_date            DATE,     -- when the project numbers were updated
+    PRIMARY KEY (snapshot_date, master_cdf)
+)
+""")
+
+con.execute("""
+CREATE TABLE IF NOT EXISTS ny_feeder_load_snapshot (
+    snapshot_date              DATE,
+    master_cdf                 VARCHAR,
+    substation_bank            VARCHAR,
+    voltage_kv                 DOUBLE,
+    peak_load_mw               DOUBLE,   -- busiest moment of demand
+    feeder_rating_mw           DOUBLE,   -- what the feeder can safely carry
+    bank_rating_mw             DOUBLE,   -- what the substation bank can carry
+    load_headroom_mw           DOUBLE,   -- room for new users (EV chargers, heat pumps...)
+    pct_of_rating_used         DOUBLE,   -- we calculate: peak / smaller of the two ratings
+    PRIMARY KEY (snapshot_date, master_cdf)
+)
+""")
+
+con.execute("DELETE FROM ny_feeder_hosting_snapshot WHERE snapshot_date = ?", [day])
+con.execute("DELETE FROM ny_feeder_load_snapshot WHERE snapshot_date = ?", [day])
+
+if ny_dir.exists():
+    ny_hosting_file = (ny_dir / "hosting_feeders.json").as_posix()
+    ny_load_file = (ny_dir / "load_capacity.json").as_posix()
+
+    con.execute(f"""
+    INSERT INTO ny_feeder_hosting_snapshot
+    SELECT
+        DATE '{day}', Master_CDF, substation_bank_name, nyiso_load_zone, feeder_voltage,
+        feeder_max_hc, feeder_min_hc, feeder_installed_dg, feeder_queued_dg,
+        feeder_dg_connected_since_refresh,
+        substation_backfeed_protection = 'Yes',
+        NULLIF(TRIM(notes), ''),                        -- empty text -> real NULL
+        CAST(epoch_ms(hca_refresh_date) AS DATE),
+        CAST(epoch_ms(feeder_dg_refresh_date) AS DATE)
+    FROM read_json_auto('{ny_hosting_file}')
+    """)
+
+    con.execute(f"""
+    INSERT INTO ny_feeder_load_snapshot
+    SELECT
+        DATE '{day}', Master_CDF, substation_bank_name, feeder_voltage,
+        feeder_peak_load, feeder_rating, substation_bank_rating, load_capacity_headroom,
+        feeder_peak_load / NULLIF(LEAST(feeder_rating, substation_bank_rating), 0)
+    FROM read_json_auto('{ny_load_file}')
+    """)
+else:
+    print("(No New York data in this snapshot, skipping NY)")
+
 # ---------- Quick look at what we built ----------
 print("\nRows loaded:")
 print(con.sql(f"""
@@ -123,5 +195,22 @@ print(con.sql(f"""
     ORDER BY nearly_full DESC, mw_left, substation   -- substation = tie-breaker
     LIMIT 10
 """))
+
+if ny_dir.exists():
+    print("NEW YORK rows loaded:")
+    print(con.sql(f"""
+        SELECT 'ny_feeder_hosting_snapshot' AS tbl, COUNT(*) AS n FROM ny_feeder_hosting_snapshot WHERE snapshot_date = '{day}'
+        UNION ALL
+        SELECT 'ny_feeder_load_snapshot', COUNT(*) FROM ny_feeder_load_snapshot WHERE snapshot_date = '{day}'
+    """))
+
+    print("NEW YORK headline numbers:")
+    print(con.sql(f"""
+        SELECT
+            (SELECT COUNT(*) FILTER (WHERE max_hc_mw <= 0)           FROM ny_feeder_hosting_snapshot WHERE snapshot_date = '{day}') AS no_room_for_solar,
+            (SELECT COUNT(*) FILTER (WHERE queued_dg_mw > max_hc_mw) FROM ny_feeder_hosting_snapshot WHERE snapshot_date = '{day}') AS line_bigger_than_room,
+            (SELECT COUNT(*) FILTER (WHERE pct_of_rating_used > 1)   FROM ny_feeder_load_snapshot    WHERE snapshot_date = '{day}') AS peak_above_rating,
+            (SELECT COUNT(*) FILTER (WHERE load_headroom_mw < 0.5)   FROM ny_feeder_load_snapshot    WHERE snapshot_date = '{day}') AS under_half_mw_load_room
+    """))
 
 con.close()
