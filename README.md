@@ -29,10 +29,11 @@ flowchart LR
 
 | Step | Script | What it does |
 |---|---|---|
-| Profile | `step1_peek.py` | Inspects each API layer: row counts, field names, sample rows |
-| Extract | `step2_extract.py` | Pulls every row with stable paging, saves an untouched dated snapshot |
-| Load | `step3_clean.py` | Builds clean tables in DuckDB: standardizes nulls, removes duplicates, adds derived metrics. Safe to rerun. |
-| Check | `step4_quality.py` | Runs data quality checks with FAIL / WARN / INFO levels and stores the results |
+| Profile | `profile_source.py` | Inspects each API layer: row counts, field names, sample rows |
+| Extract | `extract.py` | Pulls every row with stable paging, saves an untouched dated snapshot |
+| Load | `load.py` | Builds clean tables in DuckDB: standardizes nulls, removes duplicates, adds derived metrics. Safe to rerun. |
+| Check | `quality_checks.py` | Runs data quality checks with FAIL / WARN / INFO levels and stores the results |
+| Publish | `build_dashboard.py` | Builds the dashboard page in `docs/`, served by GitHub Pages |
 | Schedule | `.github/workflows/monthly-snapshot.yml` | Runs everything on the 2nd of each month on GitHub Actions |
 
 ### Design choices
@@ -81,9 +82,10 @@ pct_full        = (connected_mw + pending_mw) / feeder_limit_mw
 
 ```
 pip install -r requirements.txt
-python step2_extract.py
-python step3_clean.py
-python step4_quality.py
+python extract.py
+python load.py
+python quality_checks.py
+python build_dashboard.py
 ```
 
 Requires Python 3.10+. The database is created at `data/grid.duckdb`.
