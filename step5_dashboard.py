@@ -1,13 +1,3 @@
-"""
-Step 5 - Build a one-page dashboard from the newest snapshot.
-
-Run:  python step5_dashboard.py
-Output: docs/index.html  (GitHub Pages serves this folder as a website)
-
-How it works: Python asks DuckDB a few questions, packs the answers into
-JSON, and drops that JSON into an HTML template. The page needs no server.
-"""
-
 import json
 from pathlib import Path
 
