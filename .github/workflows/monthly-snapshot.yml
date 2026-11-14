@@ -24,7 +24,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Extract - pull today's data from National Grid
-        run: python step2_extract.py
+        run: python extract.py
 
       # Save the raw photo BEFORE checks, so we keep it even if a check fails
       - name: Save raw snapshot to the repo
@@ -38,14 +38,14 @@ jobs:
       - name: Load - rebuild clean tables from every saved snapshot
         run: |
           for day_folder in data/raw/*/; do
-            python step3_clean.py "$(basename "$day_folder")"
+            python load.py "$(basename "$day_folder")"
           done
 
       - name: Quality checks (a FAIL turns this run red)
-        run: python step4_quality.py
+        run: python quality_checks.py
 
       - name: Dashboard - rebuild the web page
-        run: python step5_dashboard.py
+        run: python build_dashboard.py
 
       - name: Publish dashboard
         run: |
