@@ -8,10 +8,17 @@ BASE_URL = (
     "https://systemdataportal.nationalgrid.com/arcgis/rest/services/"
     "MASDP/MA_HostingCapacity_with_DGPending/MapServer"
 )
+NY_URL = "https://systemdataportal.nationalgrid.com/arcgis/rest/services/NYSDP"
+NY_LAYERS = {
+    # file name             : (service,                     layer)
+    "hosting_feeders"       : ("Hosting_Capacity_Data",     0),  # room for new solar
+    "hosting_substations"   : ("Hosting_Capacity_Data",     1),
+    "load_capacity"         : ("EV_Load_Serving_Capacity",  0),  # room for new users (EV chargers etc.)
+}
 PAGE_SIZE = 1000  # the server allows max 2000 per request; we stay below it
 
 
-def fetch_all_rows(layer_id):
+def fetch_all_rows(layer_id, base_url=BASE_URL):
     """Ask for rows page by page until the server says 'no more'."""
     all_rows, offset = [], 0
     while True:
@@ -24,7 +31,7 @@ def fetch_all_rows(layer_id):
             "resultRecordCount": PAGE_SIZE, # "give me this many"
             "f": "json",
         }
-        resp = requests.get(f"{BASE_URL}/{layer_id}/query", params=params, timeout=60)
+        resp = requests.get(f"{base_url}/{layer_id}/query", params=params, timeout=60)
         resp.raise_for_status()
         data = resp.json()
         if "error" in data:
@@ -55,6 +62,15 @@ substations = fetch_all_rows(1)
 for name, rows in [("layer_0", feeders), ("layer_1", substations)]:
     (out_dir / f"{name}.json").write_text(json.dumps(rows, indent=2))
 print(f"\nSaved raw snapshot to {out_dir}\n")
+
+# ---------- 1b. New York: same idea, saved in its own subfolder ----------
+ny_dir = out_dir / "ny"
+ny_dir.mkdir(exist_ok=True)
+for file_name, (service, layer) in NY_LAYERS.items():
+    rows = fetch_all_rows(layer, base_url=f"{NY_URL}/{service}/MapServer")
+    (ny_dir / f"{file_name}.json").write_text(json.dumps(rows, indent=2))
+    print(f"  NY {file_name}: {len(rows)} rows saved")
+print(f"Saved New York snapshot to {ny_dir}\n")
 
 # ---------- 2. Test our Step 1 guesses ----------
 print("=== CHECK A: How fresh is the data? ===")
